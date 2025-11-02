@@ -1,0 +1,73 @@
+对于代码：# 2.4 处理notRepairedDamage列: 转换为数值并填充为0
+
+df_clean['notRepairedDamage'] = df_clean['notRepairedDamage'].replace('-', np.nan)
+
+df_clean['notRepairedDamage'] = pd.to_numeric(df_clean['notRepairedDamage'], errors='coerce')
+
+df_clean.loc[~df_clean['notRepairedDamage'].isin([0, 1]), 'notRepairedDamage'] = np.nan
+
+df_clean['notRepairedDamage'].fillna(0, inplace=True)会将数据表（数据源）当中notRepairedDamage列的常数值全部替换为NaN并在之后用0代替，这是不合理的
+
+改进前：
+测试集 R² (决定系数): 0.9566
+测试集 MSE (均方误差): 1191315.09
+最佳验证集损失: 979428.4350
+
+改进后：
+测试集 R² (决定系数): 0.9567解释能力有所提高，提高了0.01%
+测试集 MSE (均方误差): 1188341.21有所下降
+最佳验证集损失: 970878.4285	#计算它的平方根，得到 RMSE (均方根误差）985.3，代表平均偏离真实价格约 985
+
+变速器代码原先是：
+df_clean['gearbox'] = pd.to_numeric(df_clean['gearbox'], errors='coerce')
+        #errors='coerce' 会将所有无法转换的值（例如文本）变为 NaN（缺失值）
+        df_clean['gearbox'].fillna(df_clean['gearbox'].mode()[0], inplace=True)
+        #mode() 返回众数
+        #.fillna(..., inplace=True): 用计算出的众数填充所有 NaN 值
+
+处理变速器gearbox的脏数据后：
+测试集 R² (决定系数): 0.9586解释能力提高0.19%
+测试集 MSE (均方误差): 1137894.97进一步下降
+最佳验证集损失: 982257.2820上升
+
+现在原先的power列的处理代码是：
+# 2.2 处理power列: 限制范围并填充缺失值
+        df_clean['power'] = pd.to_numeric(df_clean['power'], errors='coerce')
+        power_outliers, power_lower, power_upper = self.detect_outliers_iqr(df_clean['power'].dropna(), 'power')
+        df_clean.loc[df_clean['power'] > 300, 'power'] = 300
+        df_clean.loc[df_clean['power'] <= 0, 'power'] = 50
+        df_clean['power'].fillna(df_clean['power'].median(), inplace=True)
+
+原先的kilometer列的处理代码为:
+# 2.3 处理kilometer列: 限制范围并填充缺失值
+        df_clean['kilometer'] = pd.to_numeric(df_clean['kilometer'], errors='coerce')
+        km_outliers, km_lower, km_upper = self.detect_outliers_iqr(df_clean['kilometer'].dropna(), 'kilometer')
+        df_clean.loc[df_clean['kilometer'] > 30, 'kilometer'] = 30
+        df_clean.loc[df_clean['kilometer'] < 0, 'kilometer'] = 0
+        #没有使用上面 IQR 计算出的 power_upper 和 power_lower
+        # 而是根据业务知识（或探索性数据分析的结论）设定了硬性边界
+        df_clean['kilometer'].fillna(df_clean['kilometer'].median(), inplace=True)
+
+修改二者后得到结果是：
+测试集 R² (决定系数): 0.9592提高了0.06%
+测试集 MSE (均方误差): 1120081.27有所下降
+最佳验证集损失: 966669.0605大幅下降
+
+
+
+train_config = {
+        'batch_size': 128,  # Batch 策略: 批量大小
+        'epochs': 500,  # 总训练轮数
+        'patience': 40  # 早停耐心值
+    }
+结果为
+测试集 R² (决定系数): 0.9594
+测试集 MSE (均方误差): 1113763.49
+最佳验证集损失: 996746.1280
+
+
+尝试更宽或者更深的网络hidden_dims=[256, 128, 64] （更宽） 或 hidden_dims=[128, 128, 64, 32] （更深）
+调整学习率
+如果您发现模型严重“欠拟合”（训练集损失和验证集损失都很高且相近），可以尝试降低 Dropout（例如 0.1 或 0.2）。如果模型“过拟合”（训练集损失远低于验证集损失），可以尝试提高它（例如 0.4 或 0.5）
+增加 Patience
+增加 L2 正则化 (Weight Decay)
